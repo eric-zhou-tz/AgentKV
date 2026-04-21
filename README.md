@@ -1,6 +1,6 @@
-# ContextKV
+# ContextKV ⚡️🗄️
 
-## One-Sentence Description
+## 🚀 One-Sentence Description
 
 High-performance C++ key-value store with in-memory reads, append-only WAL
 persistence, snapshotting, and crash recovery.
@@ -64,7 +64,7 @@ make benchmark
 ./benchmark 100000
 ```
 
-The checked-in baseline report is in [benchmark.md](benchmark.md). Treat those
+The checked-in baseline report is in [docs/benchmark.md](docs/benchmark.md). Treat those
 numbers as a local baseline, not portable performance claims; rerun the suite on
 the target machine before publishing new results.
 
@@ -165,8 +165,7 @@ include/            Public headers for store, persistence, parser, and server
 tests/              GoogleTest unit, integration, stress, and helper code
 bench/              Single-threaded benchmark harness and workloads
 scripts/            Build, run, and GoogleTest bootstrap helpers
-benchmark.md        Captured baseline methodology and results
-DESIGN.md           Engineer-facing storage and recovery design notes
+docs/               Design notes, changelog, devlog, and benchmark report
 ```
 
 ## Design Decisions
