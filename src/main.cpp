@@ -14,22 +14,33 @@
 int main() {
   // Wire persistence into the store before replay so subsequent CLI mutations
   // are durably logged.
+  std::cout << "[INFO] Initializing store..." << std::endl;
   kv::persistence::WriteAheadLog wal;
   kv::persistence::Snapshot snapshot;
   kv::store::KVStore store(&wal, &snapshot);
 
   // Recovery is layered: load the last full checkpoint first, then replay only
   // WAL records written after the byte offset covered by that snapshot.
-  std::cout << "Loading snapshot...\n";
+  std::cout << "[INFO] Loading snapshot..." << std::endl;
   const kv::persistence::SnapshotLoadResult snapshot_result =
       store.LoadSnapshot(snapshot);
-  std::cout << "Loaded " << snapshot_result.entry_count
-            << " snapshot entrie(s)\n";
+  if (snapshot_result.loaded) {
+    std::cout << "[INFO] Loaded snapshot entries: "
+              << snapshot_result.entry_count << std::endl;
+  } else {
+    std::cout << "[INFO] No snapshot found" << std::endl;
+  }
 
-  std::cout << "Replaying WAL...\n";
+  std::cout << "[INFO] Replaying WAL..." << std::endl;
   const std::size_t recovered_operations =
       store.ReplayFromWal(wal, snapshot_result.wal_offset);
-  std::cout << "Recovered " << recovered_operations << " operation(s)\n";
+  if (recovered_operations == 0) {
+    std::cout << "[INFO] No WAL entries to replay" << std::endl;
+  } else {
+    std::cout << "[INFO] Replayed WAL records: " << recovered_operations
+              << std::endl;
+  }
+  std::cout << "[INFO] Store ready" << std::endl;
 
   kv::parser::CommandParser parser;
   kv::server::CliServer server(parser, store);
