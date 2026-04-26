@@ -18,7 +18,11 @@ using Json = nlohmann::json;
  *
  * Required request shape:
  * {
- *   "action": "...",
+ *   "action": "..."
+ * }
+ *
+ * Optional request fields:
+ * {
  *   "params": { ... }
  * }
  *

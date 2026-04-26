@@ -19,6 +19,13 @@ TEST(CommandParserTest, ParsesValidAgentRequest) {
   EXPECT_EQ("1", request.at("params").at("value").get<std::string>());
 }
 
+TEST(CommandParserTest, AllowsMissingParamsObject) {
+  const Json request = parse_agent_request(R"({"action":"replay"})");
+
+  EXPECT_EQ("replay", request.at("action").get<std::string>());
+  EXPECT_FALSE(request.contains("params"));
+}
+
 TEST(CommandParserTest, RejectsInvalidJson) {
   EXPECT_THROW(
       {
@@ -65,19 +72,6 @@ TEST(CommandParserTest, RejectsNonStringAction) {
           parse_agent_request(R"({"action":1,"params":{}})");
         } catch (const std::invalid_argument& error) {
           EXPECT_STREQ("request.action must be a string", error.what());
-          throw;
-        }
-      },
-      std::invalid_argument);
-}
-
-TEST(CommandParserTest, RejectsMissingParams) {
-  EXPECT_THROW(
-      {
-        try {
-          parse_agent_request(R"({"action":"put"})");
-        } catch (const std::invalid_argument& error) {
-          EXPECT_STREQ("request.params is required", error.what());
           throw;
         }
       },

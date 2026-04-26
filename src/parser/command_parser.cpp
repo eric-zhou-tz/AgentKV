@@ -26,10 +26,7 @@ void ValidateRequestShape(const Json& request) {
   if (!request.at("action").is_string()) {
     throw std::invalid_argument("request.action must be a string");
   }
-  if (!request.contains("params")) {
-    throw std::invalid_argument("request.params is required");
-  }
-  if (!request.at("params").is_object()) {
+  if (request.contains("params") && !request.at("params").is_object()) {
     throw std::invalid_argument("request.params must be an object");
   }
 }

@@ -1,8 +1,11 @@
 #include "command/command.h"
 
+#include <cstddef>
 #include <optional>
 #include <stdexcept>
 #include <string>
+
+#include "agent/session.h"
 
 namespace kv {
 namespace command {
@@ -73,25 +76,24 @@ std::string RequireString(const Json& params, const std::string& field) {
 }
 
 /**
- * @brief Returns a required step identifier suitable for a hierarchical key.
+ * @brief Reads an object parameter with a default of `{}`.
  *
  * @param params Action parameters object.
- * @return Step identifier rendered as a string path segment.
- * @throws std::invalid_argument When the identifier is missing or unsupported.
+ * @param field Field name to read.
+ * @return Object field value or `{}` when absent.
+ * @throws std::invalid_argument When a present field is not an object.
  */
-std::string RequireStepId(const Json& params) {
-  const Json& step_id = RequireParam(params, "step_id");
-  if (step_id.is_number_integer()) {
-    return std::to_string(step_id.get<long long>());
+Json GetOptionalObject(const Json& params, const std::string& field) {
+  if (!params.contains(field)) {
+    return Json::object();
   }
-  if (step_id.is_number_unsigned()) {
-    return std::to_string(step_id.get<unsigned long long>());
+
+  const Json& value = params.at(field);
+  if (!value.is_object()) {
+    throw std::invalid_argument("request.params." + field +
+                                " must be a JSON object");
   }
-  if (step_id.is_string()) {
-    return step_id.get<std::string>();
-  }
-  throw std::invalid_argument(
-      "request.params.step_id must be a string or integer");
+  return value;
 }
 
 /**
@@ -108,58 +110,76 @@ std::string SerializePutValue(const Json& value) {
 }
 
 /**
- * @brief Attempts to decode a stored JSON blob for agent-facing responses.
+ * @brief Returns an optional non-negative integer parameter.
  *
- * Stored memory and run-state values are JSON objects serialized into the KV
- * store. If a value is not valid JSON, the raw string is returned instead.
- *
- * @param stored Persisted value string.
- * @return Parsed JSON value or the original string when parsing fails.
+ * @param params Action parameters object.
+ * @param field Optional field name.
+ * @param default_value Value returned when the field is absent.
+ * @return Parsed non-negative integer value.
+ * @throws std::invalid_argument When the field is present but invalid.
  */
-Json DecodeStoredJson(const std::string& stored) {
-  try {
-    return Json::parse(stored);
-  } catch (const Json::parse_error&) {
-    return stored;
+std::size_t GetOptionalLimit(const Json& params, const std::string& field,
+                             std::size_t default_value) {
+  if (!params.contains(field)) {
+    return default_value;
   }
-}
 
-/**
- * @brief Builds the key used to persist a workflow step log entry.
- *
- * @param params Action parameters object.
- * @return Hierarchical step key for the run and step identifier.
- */
-std::string BuildLogStepKey(const Json& params) {
-  return "runs/" + RequireString(params, "run_id") + "/steps/" +
-         RequireStepId(params);
-}
+  const Json& value = params.at(field);
+  if (value.is_number_unsigned()) {
+    return value.get<std::size_t>();
+  }
+  if (value.is_number_integer()) {
+    const long long count = value.get<long long>();
+    if (count >= 0) {
+      return static_cast<std::size_t>(count);
+    }
+  }
 
-/**
- * @brief Builds the key used to persist agent memory.
- *
- * @param params Action parameters object.
- * @return Hierarchical memory key for the requested memory identifier.
- */
-std::string BuildMemoryKey(const Json& params) {
-  return "memory/" + RequireString(params, "memory_id");
-}
-
-/**
- * @brief Builds the key used to persist workflow run state.
- *
- * @param params Action parameters object.
- * @return Hierarchical state key for the requested run identifier.
- */
-std::string BuildRunStateKey(const Json& params) {
-  return "runs/" + RequireString(params, "run_id") + "/state";
+  throw std::invalid_argument("request.params." + field +
+                              " must be a non-negative integer");
 }
 
 }  // namespace
 
 Json execute_command(const Json& request, store::KVStore& kv) {
   const std::string action = request.at("action").get<std::string>();
-  const Json& params = request.at("params");
+  const Json params = request.value("params", Json::object());
+  agent::AgentSessionManager agent(kv);
+
+  if (action == "begin_session") {
+    return agent.BeginSession(GetOptionalObject(params, "initial_state"));
+  }
+
+  if (action == "get_state") {
+    return agent.GetState(RequireString(params, "session_id"));
+  }
+
+  if (action == "update_state") {
+    return agent.UpdateState(RequireString(params, "session_id"),
+                             RequireParam(params, "state_diff"));
+  }
+
+  if (action == "get_recent_steps") {
+    return agent.GetRecentSteps(RequireString(params, "session_id"),
+                                GetOptionalLimit(params, "limit", 5));
+  }
+
+  if (action == "get_context") {
+    return agent.GetContext(RequireString(params, "session_id"),
+                            GetOptionalLimit(params, "limit", 5));
+  }
+
+  if (action == "replay") {
+    return agent.Replay(RequireString(params, "session_id"));
+  }
+
+  if (action == "log_step") {
+    return agent.LogStep(RequireString(params, "session_id"),
+                         RequireString(params, "action"),
+                         GetOptionalObject(params, "input"),
+                         GetOptionalObject(params, "output"),
+                         RequireParam(params, "state_diff"));
+  }
 
   if (action == "put") {
     const std::string key = RequireString(params, "key");
@@ -184,48 +204,6 @@ Json execute_command(const Json& request, store::KVStore& kv) {
     const std::string key = RequireString(params, "key");
     kv.Delete(key);
     return MakeOkResponse(action, key);
-  }
-
-  if (action == "log_step") {
-    const std::string key = BuildLogStepKey(params);
-    kv.Set(key, params.dump());
-    return MakeOkResponse(action, key);
-  }
-
-  if (action == "save_memory") {
-    const std::string key = BuildMemoryKey(params);
-    kv.Set(key, params.dump());
-    return MakeOkResponse(action, key);
-  }
-
-  if (action == "get_memory") {
-    const std::string key = BuildMemoryKey(params);
-    const std::optional<std::string> value = kv.Get(key);
-    if (!value.has_value()) {
-      return MakeNotFoundResponse(action, key);
-    }
-
-    Json response = MakeOkResponse(action, key);
-    response["value"] = DecodeStoredJson(*value);
-    return response;
-  }
-
-  if (action == "save_run_state") {
-    const std::string key = BuildRunStateKey(params);
-    kv.Set(key, params.dump());
-    return MakeOkResponse(action, key);
-  }
-
-  if (action == "get_run_state") {
-    const std::string key = BuildRunStateKey(params);
-    const std::optional<std::string> value = kv.Get(key);
-    if (!value.has_value()) {
-      return MakeNotFoundResponse(action, key);
-    }
-
-    Json response = MakeOkResponse(action, key);
-    response["value"] = DecodeStoredJson(*value);
-    return response;
   }
 
   throw std::invalid_argument("unsupported action: " + action);

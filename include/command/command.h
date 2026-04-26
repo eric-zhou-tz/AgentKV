@@ -12,8 +12,9 @@ using Json = parser::Json;
 /**
  * @brief Executes a validated agent request against the KV store.
  *
- * The request must contain an "action" string and a "params" object.
- * This function maps high-level agent actions into concrete KV operations.
+ * The request must contain an "action" string and may contain a "params"
+ * object. Generic KV actions are handled directly here, while session-aware
+ * actions are routed into the Phase 2.5 agent layer.
  *
  * @param request Validated JSON request object.
  * @param kv KV store instance used for storage operations.

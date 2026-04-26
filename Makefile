@@ -20,13 +20,15 @@ APP_SRCS := \
 	src/common/string_utils.cpp \
 	src/parser/command_parser.cpp \
 	src/command/command.cpp \
+	src/agent/session.cpp \
 	src/store/kv_store.cpp \
 	src/persistence/snapshot.cpp \
 	src/persistence/wal.cpp
 
 COMMAND_LAYER_SRCS := \
 	src/parser/command_parser.cpp \
-	src/command/command.cpp
+	src/command/command.cpp \
+	src/agent/session.cpp
 
 PERSISTENCE_SRCS := \
 	src/store/kv_store.cpp \
@@ -40,6 +42,7 @@ TEST_HELPER_SRCS := \
 TEST_SRCS := \
 	tests/test_main.cpp \
 	tests/integration/test_agent_overlay_persistence.cpp \
+	tests/unit/test_agent_session.cpp \
 	tests/unit/test_command.cpp \
 	tests/unit/test_command_parser.cpp \
 	tests/unit/test_kv_store.cpp \

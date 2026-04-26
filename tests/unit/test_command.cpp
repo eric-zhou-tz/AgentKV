@@ -74,68 +74,63 @@ TEST(CommandExecutionTest, DeleteRemovesStoredKey) {
   EXPECT_FALSE(store.Contains("alpha"));
 }
 
-TEST(CommandExecutionTest, LogStepStoresParamsUnderHierarchicalRunKey) {
+TEST(CommandExecutionTest, RoutesSessionAwareActionsThroughAgentSessionManager) {
   KVStore store;
-  const Json params = {
-      {"run_id", "run_123"},
-      {"step_id", 4},
-      {"status", "success"},
-      {"input", "agent input here"},
-      {"output", "agent output here"},
-      {"timestamp", "2026-04-26T12:00:00Z"},
-  };
 
-  const Json response =
-      execute_command(Json{{"action", "log_step"}, {"params", params}}, store);
+  const Json begin_response = execute_command(
+      Json{{"action", "begin_session"},
+           {"params", Json{{"initial_state", Json{{"goal", "write tests"}}}}}},
+      store);
+  EXPECT_TRUE(begin_response.at("ok").get<bool>());
+  const std::string session_id =
+      begin_response.at("session_id").get<std::string>();
 
-  EXPECT_EQ("runs/run_123/steps/4",
-            response.at("key").get<std::string>());
-  ASSERT_TRUE(store.Get("runs/run_123/steps/4").has_value());
-  EXPECT_EQ(params.dump(), store.Get("runs/run_123/steps/4").value());
-}
+  const Json log_response = execute_command(
+      Json{{"action", "log_step"},
+           {"params",
+            Json{{"session_id", session_id},
+                 {"action", "write_file"},
+                 {"input", Json{{"path", "tests/session_test.cpp"}}},
+                 {"output", Json{{"result", "created test file"}}},
+                 {"state_diff",
+                  Json{{"status", "testing"},
+                       {"last_file", "tests/session_test.cpp"}}}}}},
+      store);
+  EXPECT_TRUE(log_response.at("ok").get<bool>());
+  EXPECT_EQ(1u, log_response.at("event").at("seq").get<std::size_t>());
 
-TEST(CommandExecutionTest, SaveAndGetMemoryRoundTripStructuredJson) {
-  KVStore store;
-  const Json save_params = {
-      {"memory_id", "mem_123"},
-      {"type", "short_term"},
-      {"content", "User prefers concise summaries."},
-      {"metadata", Json{{"source", "agent"}}},
-      {"created_at", "2026-04-26T12:00:00Z"},
-  };
-
-  execute_command(
-      Json{{"action", "save_memory"}, {"params", save_params}}, store);
-  const Json response = execute_command(
-      Json{{"action", "get_memory"},
-           {"params", Json{{"memory_id", "mem_123"}}}},
+  const Json context_response = execute_command(
+      Json{{"action", "get_context"},
+           {"params", Json{{"session_id", session_id}, {"limit", 1}}}},
       store);
 
-  EXPECT_TRUE(response.at("ok").get<bool>());
-  EXPECT_EQ("memory/mem_123", response.at("key").get<std::string>());
-  EXPECT_EQ(save_params, response.at("value"));
+  EXPECT_TRUE(context_response.at("ok").get<bool>());
+  ASSERT_TRUE(context_response.at("context").contains("state"));
+  ASSERT_TRUE(context_response.at("context").contains("metadata"));
+  ASSERT_TRUE(context_response.at("context").contains("recent_steps"));
+  EXPECT_EQ("testing",
+            context_response.at("context")
+                .at("state")
+                .at("status")
+                .get<std::string>());
+  ASSERT_EQ(1u, context_response.at("context").at("recent_steps").size());
+  EXPECT_EQ("write_file",
+            context_response.at("context")
+                .at("recent_steps")
+                .at(0)
+                .at("action")
+                .get<std::string>());
 }
 
-TEST(CommandExecutionTest, SaveAndGetRunStateRoundTripStructuredJson) {
+TEST(CommandExecutionTest, UnknownSessionIdReturnsStructuredNotFoundResponse) {
   KVStore store;
-  const Json save_params = {
-      {"run_id", "run_123"},
-      {"status", "running"},
-      {"current_step", 4},
-      {"state", Json{{"foo", "bar"}}},
-      {"updated_at", "2026-04-26T12:00:00Z"},
-  };
-
-  execute_command(
-      Json{{"action", "save_run_state"}, {"params", save_params}}, store);
   const Json response = execute_command(
-      Json{{"action", "get_run_state"},
-           {"params", Json{{"run_id", "run_123"}}}},
+      Json{{"action", "get_context"},
+           {"params", Json{{"session_id", "missing"}, {"limit", 1}}}},
       store);
 
-  EXPECT_TRUE(response.at("ok").get<bool>());
-  EXPECT_EQ("runs/run_123/state", response.at("key").get<std::string>());
-  EXPECT_EQ(save_params, response.at("value"));
+  EXPECT_FALSE(response.at("ok").get<bool>());
+  EXPECT_EQ("session not found", response.at("error").get<std::string>());
 }
 
 TEST(CommandExecutionTest, MissingRequiredParamThrowsClearError) {
@@ -145,11 +140,10 @@ TEST(CommandExecutionTest, MissingRequiredParamThrowsClearError) {
       {
         try {
           execute_command(
-              Json{{"action", "put"},
-                   {"params", Json{{"value", "missing key"}}}},
+              Json{{"action", "get_state"}, {"params", Json::object()}},
               store);
         } catch (const std::invalid_argument& error) {
-          EXPECT_STREQ("request.params.key is required", error.what());
+          EXPECT_STREQ("request.params.session_id is required", error.what());
           throw;
         }
       },

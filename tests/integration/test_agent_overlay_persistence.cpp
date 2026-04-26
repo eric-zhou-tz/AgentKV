@@ -113,60 +113,85 @@ class AgentOverlayPersistenceTest : public ::testing::Test {
 };
 
 TEST_F(AgentOverlayPersistenceTest,
-       DirectAgentRequestsPersistAcrossRealProcessRestarts) {
+       SessionContextPersistsAcrossRealProcessRestarts) {
   Json response = Execute(
-      Json{{"action", "put"},
-           {"params", Json{{"key", "agent/name"}, {"value", "contextkv"}}}});
-  EXPECT_TRUE(response.at("ok").get<bool>());
+      Json{{"action", "begin_session"}, {"params", Json::object()}});
+  ASSERT_TRUE(response.at("ok").get<bool>());
+  const std::string session_id = response.at("session_id").get<std::string>();
 
   response = Execute(
-      Json{{"action", "save_memory"},
+      Json{{"action", "log_step"},
            {"params",
-            Json{{"memory_id", "mem_123"},
-                 {"type", "short_term"},
-                 {"content", "User prefers concise summaries."},
-                 {"metadata", Json{{"source", "agent"}}},
-                 {"created_at", "2026-04-26T12:00:00Z"}}}});
-  EXPECT_TRUE(response.at("ok").get<bool>());
-
-  response = Execute(
-      Json{{"action", "save_run_state"},
-           {"params",
-            Json{{"run_id", "run_123"},
-                 {"status", "running"},
-                 {"current_step", 4},
-                 {"state", Json{{"foo", "bar"}}},
-                 {"updated_at", "2026-04-26T12:00:00Z"}}}});
+            Json{{"session_id", session_id},
+                 {"action", "draft_test"},
+                 {"input", Json{{"path", "tests/session_test.cpp"}}},
+                 {"output", Json{{"result", "drafted"}}},
+                 {"state_diff",
+                  Json{{"status", "drafting"},
+                       {"last_file", "tests/session_test.cpp"}}}}}});
   EXPECT_TRUE(response.at("ok").get<bool>());
 
   response = Execute(
       Json{{"action", "log_step"},
            {"params",
-            Json{{"run_id", "run_123"},
-                 {"step_id", 4},
-                 {"status", "success"},
-                 {"input", "agent input here"},
-                 {"output", "agent output here"},
-                 {"timestamp", "2026-04-26T12:00:00Z"}}}});
+            Json{{"session_id", session_id},
+                 {"action", "run_tests"},
+                 {"input", Json{{"target", "session tests"}}},
+                 {"output", Json{{"result", "1 failure"}}},
+                 {"state_diff", Json{{"status", "testing"}}}}}});
   EXPECT_TRUE(response.at("ok").get<bool>());
 
-  const Json key_response = Execute(
-      Json{{"action", "get"},
-           {"params", Json{{"key", "agent/name"}}}});
-  EXPECT_EQ("contextkv", key_response.at("value").get<std::string>());
+  response = Execute(
+      Json{{"action", "log_step"},
+           {"params",
+            Json{{"session_id", session_id},
+                 {"action", "fix_failure"},
+                 {"input", Json{{"file", "tests/session_test.cpp"}}},
+                 {"output", Json{{"result", "fixed"}}},
+                 {"state_diff", Json{{"status", "done"}}}}}});
+  EXPECT_TRUE(response.at("ok").get<bool>());
 
-  const Json memory_response = Execute(
-      Json{{"action", "get_memory"},
-           {"params", Json{{"memory_id", "mem_123"}}}});
-  EXPECT_EQ("User prefers concise summaries.",
-            memory_response.at("value").at("content").get<std::string>());
+  const Json context_response = Execute(
+      Json{{"action", "get_context"},
+           {"params", Json{{"session_id", session_id}, {"limit", 5}}}});
 
-  const Json run_state_response = Execute(
-      Json{{"action", "get_run_state"},
-           {"params", Json{{"run_id", "run_123"}}}});
-  EXPECT_EQ(4, run_state_response.at("value").at("current_step").get<int>());
+  EXPECT_TRUE(context_response.at("ok").get<bool>());
+  EXPECT_EQ("done",
+            context_response.at("context")
+                .at("state")
+                .at("status")
+                .get<std::string>());
+  ASSERT_EQ(3u,
+            context_response.at("context").at("recent_steps").size());
+
+  const Json replay_response = Execute(
+      Json{{"action", "replay"},
+           {"params", Json{{"session_id", session_id}}}});
+  EXPECT_EQ(replay_response.at("replayed_state"),
+            replay_response.at("current_state"));
 
   EXPECT_TRUE(std::filesystem::exists(db_root_ / "kv_store.wal"));
+}
+
+TEST_F(AgentOverlayPersistenceTest, MissingSessionIdReturnsStructuredJsonError) {
+  const ProcessResult result = RunOneShotRequest(
+      db_root_.string(),
+      Json{{"action", "get_context"}, {"params", Json::object()}}.dump());
+
+  EXPECT_EQ(1, result.exit_code);
+  const Json response = ParseJsonOutput(result);
+  EXPECT_FALSE(response.at("ok").get<bool>());
+  EXPECT_EQ("request.params.session_id is required",
+            response.at("error").get<std::string>());
+}
+
+TEST_F(AgentOverlayPersistenceTest, UnknownSessionIdReturnsStructuredError) {
+  const Json response = Execute(
+      Json{{"action", "replay"},
+           {"params", Json{{"session_id", "missing_session"}}}});
+
+  EXPECT_FALSE(response.at("ok").get<bool>());
+  EXPECT_EQ("session not found", response.at("error").get<std::string>());
 }
 
 }  // namespace
