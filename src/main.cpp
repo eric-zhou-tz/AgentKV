@@ -1,4 +1,5 @@
 #include <iostream>
+#include <string>
 
 #include "parser/command_parser.h"
 #include "persistence/snapshot.h"
@@ -11,29 +12,60 @@
  *
  * @return Exit status code for the operating system.
  */
-int main() {
-  // Wire persistence into the store before replay so subsequent CLI mutations
-  // are durably logged.
-  kv::persistence::WriteAheadLog wal;
-  kv::persistence::Snapshot snapshot;
-  kv::store::KVStore store(&wal, &snapshot);
+int main(int argc, char* argv[]) {
 
-  // Recovery is layered: load the last full checkpoint first, then replay only
-  // WAL records written after the byte offset covered by that snapshot.
-  std::cout << "Loading snapshot...\n";
-  const kv::persistence::SnapshotLoadResult snapshot_result =
-      store.LoadSnapshot(snapshot);
-  std::cout << "Loaded " << snapshot_result.entry_count
-            << " snapshot entrie(s)\n";
+    // Check if receiving JSON
+    bool json_mode = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--json") {
+            json_mode = true;
+            break;
+        }
+    }
 
-  std::cout << "Replaying WAL...\n";
-  const std::size_t recovered_operations =
-      store.ReplayFromWal(wal, snapshot_result.wal_offset);
-  std::cout << "Recovered " << recovered_operations << " operation(s)\n";
+    // Wire persistence into the store before replay so subsequent mutations are
+    // durably logged.
+    kv::persistence::WriteAheadLog wal;
+    kv::persistence::Snapshot snapshot;
+    kv::store::KVStore store(&wal, &snapshot);
 
-  kv::parser::CommandParser parser;
-  kv::server::CliServer server(parser, store);
+    if (!json_mode) {
+        std::cout << "Loading snapshot...\n";
+    }
 
-  server.Run(std::cin, std::cout);
-  return 0;
+    // Load snapshot no matter what
+    const kv::persistence::SnapshotLoadResult snapshot_result =
+        store.LoadSnapshot(snapshot);
+    if (!json_mode) {
+        std::cout << "Loaded " << snapshot_result.entry_count
+                << " snapshot entrie(s)\n";
+
+        std::cout << "Replaying WAL...\n";
+    }
+
+    // Recover from WAL no matter what
+    const std::size_t recovered_operations =
+        store.ReplayFromWal(wal, snapshot_result.wal_offset);
+    if (!json_mode) {
+        std::cout << "Recovered " << recovered_operations << " operation(s)\n";
+    }
+
+    // Pass to JSON parser
+    if (json_mode) {
+        std::string raw_input;
+        std::string line;
+        while (std::getline(std::cin, line)) {
+            raw_input += line;
+            raw_input += '\n';
+        }
+
+        // TODO: pass raw_input and store to JSON parser
+        return 0;
+    }
+
+    kv::parser::CommandParser parser;
+    kv::server::CliServer server(parser, store);
+
+    server.Run(std::cin, std::cout);
+    return 0;
 }
