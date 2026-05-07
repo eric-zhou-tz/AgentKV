@@ -1,7 +1,8 @@
 #include <iostream>
 #include <string>
 
-#include "parser/command_parser.h"
+#include "parser/cli_parser.h"
+#include "parser/json_enforcer.h"
 #include "persistence/snapshot.h"
 #include "persistence/wal.h"
 #include "server/cli_server.h"
@@ -50,7 +51,7 @@ int main(int argc, char* argv[]) {
         std::cout << "Recovered " << recovered_operations << " operation(s)\n";
     }
 
-    // Pass to JSON parser
+    // Pass raw JSON mode input through the lightweight parser-layer enforcer.
     if (json_mode) {
         std::string raw_input;
         std::string line;
@@ -59,11 +60,17 @@ int main(int argc, char* argv[]) {
             raw_input += '\n';
         }
 
-        // TODO: pass raw_input and store to JSON parser
-        return 0;
+        kv::parser::JsonEnforcer enforcer;
+        if (enforcer.IsValidJson(raw_input)) {
+            std::cout << "{\"status\":\"ok\",\"message\":\"valid JSON\"}\n";
+            return 0;
+        }
+
+        std::cout << "{\"status\":\"error\",\"message\":\"invalid JSON\"}\n";
+        return 1;
     }
 
-    kv::parser::CommandParser parser;
+    kv::parser::CliParser parser;
     kv::server::CliServer server(parser, store);
 
     server.Run(std::cin, std::cout);

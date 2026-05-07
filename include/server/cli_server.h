@@ -3,7 +3,7 @@
 
 #include <iosfwd>
 
-#include "parser/command_parser.h"
+#include "parser/cli_parser.h"
 #include "store/kv_store.h"
 
 namespace kv {
@@ -20,7 +20,7 @@ class CliServer {
    * @param parser Parser used to convert raw input into commands.
    * @param store Store used to execute parsed commands.
    */
-  CliServer(parser::CommandParser& parser, store::KVStore& store);
+  CliServer(parser::CliParser& parser, store::KVStore& store);
 
   /**
    * @brief Starts the read-evaluate-print loop.
@@ -48,7 +48,7 @@ class CliServer {
   void PrintHelp(std::ostream& output) const;
 
   /** @brief Parser dependency used to decode user input. */
-  parser::CommandParser& parser_;
+  parser::CliParser& parser_;
   /** @brief Store dependency used to service parsed commands. */
   store::KVStore& store_;
 };

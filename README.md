@@ -157,7 +157,7 @@ docker run --rm -it kv-store
 ```text
 src/store/          Core in-memory KV store and persistence integration
 src/persistence/    WAL, snapshot, and binary I/O implementations
-src/parser/         CLI command parser
+src/parser/         CLI parser
 src/server/         Interactive CLI loop and command dispatch
 include/            Public headers for store, persistence, parser, and server
 tests/              GoogleTest unit, integration, stress, and helper code

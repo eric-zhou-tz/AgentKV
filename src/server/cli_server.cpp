@@ -7,7 +7,7 @@
 namespace kv {
 namespace server {
 
-CliServer::CliServer(parser::CommandParser& parser, store::KVStore& store)
+CliServer::CliServer(parser::CliParser& parser, store::KVStore& store)
   : parser_(parser), store_(store) {}
 
 void CliServer::Run(std::istream& input, std::ostream& output) {
