@@ -1,4 +1,4 @@
-#include "parser/command_parser.h"
+#include "parser/cli_parser.h"
 
 #include <sstream>
 #include <vector>
@@ -49,7 +49,7 @@ bool Command::IsValid() const {
   return type != CommandType::kInvalid;
 }
 
-Command CommandParser::Parse(const std::string& input) const {
+Command CliParser::Parse(const std::string& input) const {
   // Normalize only the command framing. Key and value contents keep their
   // original casing.
   const std::string trimmed = common::Trim(input);

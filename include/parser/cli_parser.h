@@ -1,5 +1,5 @@
-#ifndef KV_STORE_PARSER_COMMAND_PARSER_H_
-#define KV_STORE_PARSER_COMMAND_PARSER_H_
+#ifndef KV_STORE_PARSER_CLI_PARSER_H_
+#define KV_STORE_PARSER_CLI_PARSER_H_
 
 #include <string>
 
@@ -43,7 +43,7 @@ struct Command {
 /**
  * @brief Parses raw CLI input into structured commands.
  */
-class CommandParser {
+class CliParser {
  public:
   /**
    * @brief Parses a single line of user input.
@@ -57,4 +57,4 @@ class CommandParser {
 }  // namespace parser
 }  // namespace kv
 
-#endif  // KV_STORE_PARSER_COMMAND_PARSER_H_
+#endif  // KV_STORE_PARSER_CLI_PARSER_H_

@@ -6,6 +6,14 @@ CPPFLAGS ?= -Iinclude
 DEPFLAGS := -MMD -MP
 LDFLAGS ?=
 LDLIBS ?=
+NLOHMANN_JSON_INCLUDE ?= $(firstword \
+	$(wildcard /opt/homebrew/include/nlohmann/json.hpp) \
+	$(wildcard /usr/local/include/nlohmann/json.hpp) \
+	$(wildcard /opt/miniconda3/include/nlohmann/json.hpp))
+
+ifneq ($(NLOHMANN_JSON_INCLUDE),)
+CPPFLAGS += -I$(patsubst %/nlohmann/json.hpp,%,$(NLOHMANN_JSON_INCLUDE))
+endif
 
 APP_TARGET := bin/kv_store
 TEST_TARGET := bin/kv_store_tests
@@ -15,7 +23,8 @@ BENCHMARK_TARGET := benchmark
 APP_SRCS := \
 	src/main.cpp \
 	src/common/string_utils.cpp \
-	src/parser/command_parser.cpp \
+	src/parser/cli_parser.cpp \
+	src/parser/json_enforcer.cpp \
 	src/server/cli_server.cpp \
 	src/store/kv_store.cpp \
 	src/persistence/snapshot.cpp \
@@ -33,10 +42,12 @@ TEST_HELPER_SRCS := \
 TEST_SRCS := \
 	tests/test_main.cpp \
 	tests/unit/test_kv_store.cpp \
+	tests/unit/test_json_enforcer.cpp \
 	tests/unit/test_wal.cpp \
 	tests/unit/test_snapshot.cpp \
 	tests/integration/test_recovery.cpp \
 	$(TEST_HELPER_SRCS) \
+	src/parser/json_enforcer.cpp \
 	$(PERSISTENCE_SRCS)
 
 STRESS_SRCS := \
