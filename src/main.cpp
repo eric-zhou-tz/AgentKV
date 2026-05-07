@@ -1,6 +1,8 @@
 #include <iostream>
 #include <string>
 
+#include <nlohmann/json.hpp>
+
 #include "parser/cli_parser.h"
 #include "parser/json_enforcer.h"
 #include "persistence/snapshot.h"
@@ -60,13 +62,37 @@ int main(int argc, char* argv[]) {
             raw_input += '\n';
         }
 
+        nlohmann::json request;
+        try {
+            request = nlohmann::json::parse(raw_input);
+        } catch (const nlohmann::json::parse_error& error) {
+            nlohmann::json response = {
+                {"ok", false},
+                {"error", {
+                    {"type", "parse_error"},
+                    {"message", error.what()},
+                }},
+            };
+            std::cout << response.dump() << '\n';
+            return 1;
+        }
+
         kv::parser::JsonEnforcer enforcer;
-        if (enforcer.IsValidJson(raw_input)) {
-            std::cout << "{\"status\":\"ok\",\"message\":\"valid JSON\"}\n";
+        const kv::parser::ValidationResult result =
+            enforcer.ValidateRequest(request);
+        if (result.ok) {
+            std::cout << nlohmann::json{{"ok", true}}.dump() << '\n';
             return 0;
         }
 
-        std::cout << "{\"status\":\"error\",\"message\":\"invalid JSON\"}\n";
+        nlohmann::json response = {
+            {"ok", false},
+            {"error", {
+                {"type", "validation_error"},
+                {"message", result.error},
+            }},
+        };
+        std::cout << response.dump() << '\n';
         return 1;
     }
 

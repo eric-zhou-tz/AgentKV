@@ -42,10 +42,12 @@ TEST_HELPER_SRCS := \
 TEST_SRCS := \
 	tests/test_main.cpp \
 	tests/unit/test_kv_store.cpp \
+	tests/unit/test_json_enforcer.cpp \
 	tests/unit/test_wal.cpp \
 	tests/unit/test_snapshot.cpp \
 	tests/integration/test_recovery.cpp \
 	$(TEST_HELPER_SRCS) \
+	src/parser/json_enforcer.cpp \
 	$(PERSISTENCE_SRCS)
 
 STRESS_SRCS := \
