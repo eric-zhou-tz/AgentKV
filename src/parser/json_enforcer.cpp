@@ -1,134 +1,81 @@
 #include "parser/json_enforcer.h"
 
-#include <unordered_set>
+#include "parser/action_validation.h"
+#include "parser/validation_helpers.h"
 
 namespace kv {
 namespace parser {
 
 namespace {
 
-ValidationResult Ok() {
-  return {true, ""};
+/**
+ * @brief Checks whether an op is an allowed semantic write operation.
+ *
+ * @param op Operation name from the parsed request.
+ * @return true when op is a currently supported semantic write operation.
+ */
+bool IsValidSetOperation(const std::string& op) {
+  return op == "log_step" || op == "set_state";
 }
 
-ValidationResult Error(const std::string& message) {
-  return {false, message};
-}
-
-std::string JoinPath(const std::string& path, const std::string& key) {
-  if (path.empty()) {
-    return key;
-  }
-  return path + "." + key;
-}
-
-ValidationResult HasOnlyKeys(
-    const nlohmann::json& object,
-    const std::unordered_set<std::string>& allowed_keys,
-    const std::string& path) {
-  for (const auto& item : object.items()) {
-    if (allowed_keys.find(item.key()) == allowed_keys.end()) {
-      return Error("Unknown field: " + JoinPath(path, item.key()));
-    }
-  }
-
-  return Ok();
-}
-
-ValidationResult RequireString(const nlohmann::json& object,
-                               const std::string& field,
-                               const std::string& path) {
-  const std::string field_path = JoinPath(path, field);
-  if (!object.contains(field)) {
-    return Error("Missing required field: " + field_path);
-  }
-
-  if (!object.at(field).is_string()) {
-    return Error("Invalid field type: " + field_path + " must be string");
-  }
-
-  return Ok();
-}
-
-ValidationResult RequireObject(const nlohmann::json& object,
-                               const std::string& field,
-                               const std::string& path) {
-  const std::string field_path = JoinPath(path, field);
-  if (!object.contains(field)) {
-    return Error("Missing required field: " + field_path);
-  }
-
-  if (!object.at(field).is_object()) {
-    return Error("Invalid field type: " + field_path + " must be object");
-  }
-
-  return Ok();
-}
-
-ValidationResult ValidateAction(const nlohmann::json& action) {
-  ValidationResult result = HasOnlyKeys(
-      action, {"type", "name", "interaction"}, "value.action");
-  if (!result.ok) {
-    return result;
-  }
-
-  result = RequireString(action, "type", "value.action");
-  if (!result.ok) {
-    return result;
-  }
-
-  result = RequireString(action, "name", "value.action");
-  if (!result.ok) {
-    return result;
-  }
-
-  return RequireObject(action, "interaction", "value.action");
-}
-
+/**
+ * @brief Validates the value.state object in a set_action request.
+ *
+ * @param state Parsed value.state object.
+ * @return Validation success or a field-specific error.
+ */
 ValidationResult ValidateState(const nlohmann::json& state) {
+  // The state wrapper is strict, while context remains the open-ended durable
+  // state payload that later replay/debugging features can inspect.
   ValidationResult result =
-      HasOnlyKeys(state, {"goal", "status", "context"}, "value.state");
+      RejectUnknownChildren(state, {"goal", "status", "context"}, "value.state");
   if (!result.ok) {
     return result;
   }
 
-  result = RequireString(state, "goal", "value.state");
+  result = RequireStringChild(state, "goal", "value.state");
   if (!result.ok) {
     return result;
   }
 
-  result = RequireString(state, "status", "value.state");
+  result = RequireStringChild(state, "status", "value.state");
   if (!result.ok) {
     return result;
   }
 
-  return RequireObject(state, "context", "value.state");
+  return RequireObjectChild(state, "context", "value.state");
 }
 
+/**
+ * @brief Validates the value.metadata object in a set_action request.
+ *
+ * @param metadata Parsed value.metadata object.
+ * @return Validation success or a field-specific error.
+ */
 ValidationResult ValidateMetadata(const nlohmann::json& metadata) {
-  ValidationResult result =
-      HasOnlyKeys(metadata, {"provider", "model", "timestamp", "trace_id"},
-                  "value.metadata");
+  ValidationResult result = RejectUnknownChildren(
+      metadata, {"provider", "model", "timestamp", "trace_id"},
+      "value.metadata");
   if (!result.ok) {
     return result;
   }
 
-  result = RequireString(metadata, "provider", "value.metadata");
+  result = RequireStringChild(metadata, "provider", "value.metadata");
   if (!result.ok) {
     return result;
   }
 
-  result = RequireString(metadata, "model", "value.metadata");
+  result = RequireStringChild(metadata, "model", "value.metadata");
   if (!result.ok) {
     return result;
   }
 
-  result = RequireString(metadata, "timestamp", "value.metadata");
+  result = RequireStringChild(metadata, "timestamp", "value.metadata");
   if (!result.ok) {
     return result;
   }
 
-  return RequireString(metadata, "trace_id", "value.metadata");
+  return RequireStringChild(metadata, "trace_id", "value.metadata");
 }
 
 }  // namespace
@@ -157,11 +104,13 @@ ValidationResult JsonEnforcer::ValidateRequest(
     return Error("Invalid field type: op must be string");
   }
 
-  if (request.at("op").get<std::string>() == "set_action") {
+  // Keep this as the operation router so future commands can add their own
+  // validators without weakening the semantic write contract.
+  if (IsValidSetOperation(request.at("op").get<std::string>())) {
     return ValidateSetActionRequest(request);
   }
 
-  return Error("Invalid op: expected set_action");
+  return Error("Invalid op: expected semantic write operation");
 }
 
 ValidationResult JsonEnforcer::ValidateSetActionRequest(
@@ -170,53 +119,54 @@ ValidationResult JsonEnforcer::ValidateSetActionRequest(
     return Error("Invalid field type: request must be object");
   }
 
+  // First reject extra children, then require each canonical child so missing
+  // fields and unknown fields produce distinct errors.
   ValidationResult result =
-      HasOnlyKeys(request, {"op", "session_id", "event_id", "value"}, "");
+      RejectUnknownChildren(request, {"op", "session_id", "event_id", "value"}, "");
   if (!result.ok) {
     return result;
   }
 
-  result = RequireString(request, "op", "");
+  result = RequireStringChild(request, "op", "");
   if (!result.ok) {
     return result;
   }
 
-  if (request.at("op").get<std::string>() != "set_action") {
-    return Error("Invalid op: expected set_action");
+  if (!IsValidSetOperation(request.at("op").get<std::string>())) {
+    return Error("Invalid op: expected semantic write operation");
   }
 
-  result = RequireString(request, "session_id", "");
+  result = RequireStringChild(request, "session_id", "");
   if (!result.ok) {
     return result;
   }
-
-  result = RequireString(request, "event_id", "");
+  result = RequireStringChild(request, "event_id", "");
   if (!result.ok) {
     return result;
   }
-
-  result = RequireObject(request, "value", "");
+  result = RequireObjectChild(request, "value", "");
   if (!result.ok) {
     return result;
   }
 
   const nlohmann::json& value = request.at("value");
-  result = HasOnlyKeys(value, {"action", "state", "metadata"}, "value");
+  // value is a strict envelope. Nested payload flexibility is handled by the
+  // child validators rather than by accepting unknown fields here.
+  result = RejectUnknownChildren(value, {"action", "state", "metadata"}, "value");
   if (!result.ok) {
     return result;
   }
 
-  result = RequireObject(value, "action", "value");
+  result = RequireObjectChild(value, "action", "value");
   if (!result.ok) {
     return result;
   }
-
   result = ValidateAction(value.at("action"));
   if (!result.ok) {
     return result;
   }
 
-  result = RequireObject(value, "state", "value");
+  result = RequireObjectChild(value, "state", "value");
   if (!result.ok) {
     return result;
   }
@@ -226,7 +176,7 @@ ValidationResult JsonEnforcer::ValidateSetActionRequest(
     return result;
   }
 
-  result = RequireObject(value, "metadata", "value");
+  result = RequireObjectChild(value, "metadata", "value");
   if (!result.ok) {
     return result;
   }
