@@ -2,31 +2,31 @@
 
 ## Time-Travel Debugging for AI Agents
 
-AgentKV records and replays every step of an AI agent so developers can rewind, inspect, fork, and fix failed workflows without rerunning the entire agent from scratch.
+AgentKV records and replays AI agent execution so developers can inspect failures, restore state, and debug workflows.
 
-## One-Sentence Description
+Modern AI agents are difficult to debug because execution is nondeterministic. When an agent fails halfway through a complex task, there's no easy way to inspect what happened, restore state, or replay from a specific point.
 
-AgentKV is a durable C++ execution-state layer for AI agents: a high-performance key-value store backed by a write-ahead log, snapshots, structured JSON events, sessions, and deterministic replay primitives.
+AgentKV solves this by treating the LLM as stateless compute and storing execution externally as structured, versioned state.
 
-## Why AgentKV Exists
+This makes agent execution:
 
-Modern AI agents are powerful, but debugging them is painful.
+- Replayable
+- Inspectable
+- Recoverable
+- Forkable
+- Traceable
 
-When an agent fails halfway through a long workflow, developers usually have to rerun the whole thing, hope the LLM behaves similarly, pay for repeated API calls, and manually reconstruct what happened. AgentKV attacks that problem at the systems layer.
+With AgentKV, developers can:
 
-Instead of treating the LLM as the owner of state, AgentKV treats the LLM as a stateless compute function. All execution state is moved into a durable event log and key-value store. Every meaningful step — user input, LLM output, tool call, tool result, state transition, memory update, and checkpoint — can be captured as structured data.
+- Rewind to a specific event
+- Inspect exactly what the agent saw and did
+- Restore execution state before a failure
+- Modify prompts, tool outputs, or state
+- Replay workflows without repeating every API call
 
-The result is a foundation for:
+---
 
-* Rewinding agent execution to a specific step
-* Inspecting exactly what the agent saw and did
-* Forking execution from a previous event
-* Replaying workflows without repeating every API call
-* Debugging agent failures with traceable, durable state
-
-## Core Idea
-
-AgentKV gives agents a persistent execution substrate.
+## Core Architecture
 
 ```text
 LLM / Agent Runtime
@@ -44,7 +44,34 @@ KV Store Core
 WAL + Snapshots + Recovery
 ```
 
-The LLM does not need to remember everything internally. It emits structured operations. AgentKV stores those operations under session- and event-scoped keys, making the execution timeline recoverable, queryable, and replayable.
+The LLM does not need to internally remember the entire workflow. Instead, it emits structured operations while AgentKV stores execution state under session- and event-scoped keys.
+
+This creates a durable execution timeline that can be queried, reconstructed, replayed, and debugged.
+
+## Example Timeline
+
+```text
+
+Session: sess_001
+event_001  user_message    "Analyze this repository"
+event_002  llm_reasoning   plan generated
+event_003  tool_call       read README.md
+event_004  tool_result     README contents returned
+event_005  state_update    goal refined
+event_006  tool_call       run tests
+event_007  failure         tests failed
+
+A developer should eventually be able to:
+
+1. Open a failed session
+2. Inspect the execution timeline
+3. Jump to the failing event
+4. View prompts, tool calls, outputs, and state
+5. Restore execution state before the failure
+6. Modify prompts or tool outputs
+7. Replay or fork execution from that exact point
+
+This is the core time-travel debugging workflow.
 
 ## Current Status
 
