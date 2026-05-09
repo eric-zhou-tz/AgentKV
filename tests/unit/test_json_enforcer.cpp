@@ -14,16 +14,16 @@ using nlohmann::json;
 
 json ValidSetActionRequest() {
   return {
-      {"op", "set_action"},
+      {"op", "log_step"},
       {"session_id", "sess_001"},
       {"event_id", "event_001"},
       {"value",
        {
            {"action",
             {
-                {"type", "tool_call"},
+                {"type", "user_message"},
                 {"name", "search_flights"},
-                {"interaction", json::object()},
+                {"interaction", {{"content", "hello"}}},
             }},
            {"state",
             {
@@ -62,13 +62,28 @@ void ExpectInvalid(const json& request, const std::string& expected_message_part
       << result.error;
 }
 
-TEST(JsonEnforcerTest, AcceptsMinimalValidSetActionWithEmptyPayloadObjects) {
+TEST(JsonEnforcerTest, AcceptsMinimalValidSetActionWithMessageContent) {
   ExpectValid(ValidSetActionRequest());
 }
 
-TEST(JsonEnforcerTest, AcceptsNestedArbitraryPayloadInsideInteraction) {
+TEST(JsonEnforcerTest, AcceptsSetStateSemanticWriteOperation) {
+  json request = ValidSetActionRequest();
+  request["op"] = "set_state";
+
+  ExpectValid(request);
+}
+
+TEST(JsonEnforcerTest, AcceptsAssistantMessageActionType) {
+  json request = ValidSetActionRequest();
+  request["value"]["action"]["type"] = "assistant_message";
+
+  ExpectValid(request);
+}
+
+TEST(JsonEnforcerTest, RejectsNestedArbitraryPayloadInsideInteraction) {
   json request = ValidSetActionRequest();
   request["value"]["action"]["interaction"] = {
+      {"content", "hello"},
       {"tool", "google_flights"},
       {"query", {
                     {"from", "ORD"},
@@ -76,7 +91,7 @@ TEST(JsonEnforcerTest, AcceptsNestedArbitraryPayloadInsideInteraction) {
                 }},
   };
 
-  ExpectValid(request);
+  ExpectInvalid(request, "value.action.interaction");
 }
 
 TEST(JsonEnforcerTest, AcceptsNestedArbitraryPayloadInsideContext) {
@@ -108,7 +123,7 @@ TEST(JsonEnforcerTest, RejectsInvalidSetActionContractsWithSpecificErrors) {
        [](json& request) { request["op"] = 123; },
        "op"},
       {"op is unsupported",
-       [](json& request) { request["op"] = "get_action"; },
+       [](json& request) { request["op"] = "set_action"; },
        "op"},
       {"missing session_id",
        [](json& request) { request.erase("session_id"); },
@@ -140,6 +155,11 @@ TEST(JsonEnforcerTest, RejectsInvalidSetActionContractsWithSpecificErrors) {
       {"value.action.type is not a string",
        [](json& request) { request["value"]["action"]["type"] = 123; },
        "value.action.type"},
+      {"value.action.type is unsupported",
+       [](json& request) {
+         request["value"]["action"]["type"] = "tool_call";
+       },
+       "value.action.type"},
       {"missing value.action.name",
        [](json& request) { request["value"]["action"].erase("name"); },
        "value.action.name"},
@@ -154,6 +174,16 @@ TEST(JsonEnforcerTest, RejectsInvalidSetActionContractsWithSpecificErrors) {
          request["value"]["action"]["interaction"] = "not an object";
        },
        "value.action.interaction"},
+      {"missing value.action.interaction.content",
+       [](json& request) {
+         request["value"]["action"]["interaction"].erase("content");
+       },
+       "value.action.interaction.content"},
+      {"value.action.interaction.content is not a string",
+       [](json& request) {
+         request["value"]["action"]["interaction"]["content"] = 123;
+       },
+       "value.action.interaction.content"},
       {"missing value.state",
        [](json& request) { request["value"].erase("state"); },
        "value.state"},

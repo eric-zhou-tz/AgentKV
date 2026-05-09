@@ -23,8 +23,10 @@ BENCHMARK_TARGET := benchmark
 APP_SRCS := \
 	src/main.cpp \
 	src/common/string_utils.cpp \
+	src/parser/action_validation.cpp \
 	src/parser/cli_parser.cpp \
 	src/parser/json_enforcer.cpp \
+	src/parser/validation_helpers.cpp \
 	src/server/cli_server.cpp \
 	src/store/kv_store.cpp \
 	src/persistence/snapshot.cpp \
@@ -47,7 +49,9 @@ TEST_SRCS := \
 	tests/unit/test_snapshot.cpp \
 	tests/integration/test_recovery.cpp \
 	$(TEST_HELPER_SRCS) \
+	src/parser/action_validation.cpp \
 	src/parser/json_enforcer.cpp \
+	src/parser/validation_helpers.cpp \
 	$(PERSISTENCE_SRCS)
 
 STRESS_SRCS := \
