@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
         std::cout << "Recovered " << recovered_operations << " operation(s)\n";
     }
 
-    // Pass raw JSON mode input through the lightweight parser-layer enforcer.
+    // JSON mode stops at validation for now; it does not route into storage.
     if (json_mode) {
         std::string raw_input;
         std::string line;
@@ -64,6 +64,9 @@ int main(int argc, char* argv[]) {
 
         nlohmann::json request;
         try {
+            // Parse errors are reported separately from AgentKV contract
+            // validation errors so callers can distinguish malformed JSON from
+            // a well-formed but unsupported request.
             request = nlohmann::json::parse(raw_input);
         } catch (const nlohmann::json::parse_error& error) {
             nlohmann::json response = {
@@ -78,6 +81,8 @@ int main(int argc, char* argv[]) {
         }
 
         kv::parser::JsonEnforcer enforcer;
+        // Validate only the canonical command envelope. Persistence and command
+        // routing will be connected after the contract is stable.
         const kv::parser::ValidationResult result =
             enforcer.ValidateRequest(request);
         if (result.ok) {
