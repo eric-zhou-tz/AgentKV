@@ -48,6 +48,28 @@ The LLM does not need to internally remember the entire workflow. Instead, it em
 
 This creates a durable execution timeline that can be queried, reconstructed, replayed, and debugged.
 
+## Human-Centered Agent Workflows
+
+As AI agents become more autonomous, debugging is no longer only a systems problem — it is also an interaction problem.
+
+Real-world agent workflows involve continuous coordination between:
+- users
+- agents
+- tools
+- external systems
+- evolving execution state
+
+AgentKV is designed not only for persistence and replay, but also for building inspectable and collaborative human-agent systems.
+
+By making execution state replayable, traceable, and recoverable, AgentKV enables developers to:
+- understand how agents make decisions
+- inspect failures collaboratively
+- experiment with alternative workflows
+- analyze multi-agent interactions
+- design safer and more controllable AI systems
+
+This bridges systems engineering, agent orchestration, and human-centered AI workflow design.
+
 ## Example Timeline
 
 ```text
